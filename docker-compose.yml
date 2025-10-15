@@ -1,0 +1,20 @@
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: physio-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: secret
+      MYSQL_DATABASE: physioclinic
+      TZ: UTC
+    ports:
+      - "3307:3306"
+    command:
+      - "--default-time-zone=+00:00"
+
+  adminer:
+    image: adminer:latest
+    container_name: physio-adminer
+    ports:
+      - "8081:8080"
+    depends_on:
+      - mysql
