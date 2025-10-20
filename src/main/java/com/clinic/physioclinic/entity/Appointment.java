@@ -1,6 +1,7 @@
 package com.clinic.physioclinic.entity;
 
 import jakarta.persistence.*;
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.Objects;
 
@@ -12,8 +13,6 @@ public class Appointment {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    // Keeping these as scalar FKs to match your schema exactly.
-    // If you already use @ManyToOne to Patient/Doctor, you can swap later.
     @Column(name = "patient_id", nullable = false)
     private Long patientId;
 
@@ -35,17 +34,17 @@ public class Appointment {
     @Column(name = "notes", length = 1000)
     private String notes;
 
-    // ---- constructors ----
+    @Column(name = "created_at", updatable = false, nullable = false)
+    private Instant createdAt;
+
+    @Column(name = "updated_at", nullable = false)
+    private Instant updatedAt;
+
     public Appointment() {}
 
-    public Appointment(Long id,
-                       Long patientId,
-                       Long doctorId,
-                       LocalDateTime startTime,
-                       LocalDateTime endTime,
-                       String type,
-                       String status,
-                       String notes) {
+    public Appointment(Long id, Long patientId, Long doctorId,
+                       LocalDateTime startTime, LocalDateTime endTime,
+                       String type, String status, String notes) {
         this.id = id;
         this.patientId = patientId;
         this.doctorId = doctorId;
@@ -56,7 +55,20 @@ public class Appointment {
         this.notes = notes;
     }
 
-    // ---- getters & setters ----
+    /* lifecycle */
+    @PrePersist
+    protected void onCreate() {
+        Instant now = Instant.now();
+        if (createdAt == null) createdAt = now;
+        updatedAt = now;
+    }
+
+    @PreUpdate
+    protected void onUpdate() {
+        updatedAt = Instant.now();
+    }
+
+    /* getters/setters */
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
 
@@ -81,7 +93,12 @@ public class Appointment {
     public String getNotes() { return notes; }
     public void setNotes(String notes) { this.notes = notes; }
 
-    // ---- equals & hashCode based on id ----
+    public Instant getCreatedAt() { return createdAt; }
+    public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }
+
+    public Instant getUpdatedAt() { return updatedAt; }
+    public void setUpdatedAt(Instant updatedAt) { this.updatedAt = updatedAt; }
+
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;
@@ -89,11 +106,7 @@ public class Appointment {
         Appointment that = (Appointment) o;
         return id != null && id.equals(that.id);
     }
-
-    @Override
-    public int hashCode() {
-        return Objects.hashCode(id);
-    }
+    @Override public int hashCode() { return Objects.hashCode(id); }
 
     @Override
     public String toString() {

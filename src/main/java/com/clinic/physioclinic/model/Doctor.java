@@ -1,22 +1,30 @@
 package com.clinic.physioclinic.model;
 
+
 import jakarta.persistence.*;
-import lombok.*;
 
-import java.time.Instant;
 
-@Entity @Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
+@Entity
+@Table(name = "doctors")
 public class Doctor {
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
-    @Column(nullable=false) private String name;
-    @Column(nullable=false) private String specialization;
-    /** default slot minutes per doctor; can be overridden in Availability */
-    @Column(nullable=false) private Integer defaultSlotMinutes;
 
-    @Column(nullable=false) private Instant createdAt;
-    @Column(nullable=false) private Instant updatedAt;
 
-    @PrePersist void prePersist() { var now = Instant.now(); createdAt = now; updatedAt = now; }
-    @PreUpdate  void preUpdate()  { updatedAt = Instant.now(); }
+    @OneToOne(optional = false)
+    @JoinColumn(name = "user_id", nullable = false, foreignKey = @ForeignKey(name = "fk_doctor_user"))
+    private User user;
+
+
+    @Column(length = 100)
+    private String specialization;
+
+
+    // getters & setters
+    public Long getId() { return id; }
+    public void setId(Long id) { this.id = id; }
+    public User getUser() { return user; }
+    public void setUser(User user) { this.user = user; }
+    public String getSpecialization() { return specialization; }
+    public void setSpecialization(String specialization) { this.specialization = specialization; }
 }

@@ -1,5 +1,5 @@
 package com.clinic.physioclinic.dto;
 
-import java.time.OffsetDateTime;
+import java.time.LocalDateTime;
 
-public record SlotDto(OffsetDateTime start, OffsetDateTime end) {}
+public record SlotDto(LocalDateTime start, LocalDateTime end) {}

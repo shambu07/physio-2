@@ -1,19 +1,19 @@
 package com.clinic.physioclinic.service;
 
-import com.clinic.physioclinic.dto.AppointmentCreateRequest;
-import com.clinic.physioclinic.dto.AppointmentResDto;
-import com.clinic.physioclinic.dto.DoctorDayResponse;
-import com.clinic.physioclinic.dto.DoctorWeekResponse;
-import com.clinic.physioclinic.dto.DaySlotsResponse;
+import com.clinic.physioclinic.dto.*;
 import com.clinic.physioclinic.entity.Appointment;
 import com.clinic.physioclinic.model.AppointmentStatus;
 import com.clinic.physioclinic.repository.AppointmentRepository;
+import com.clinic.physioclinic.repository.DoctorRepository;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 
 @Service
 @Transactional
@@ -21,36 +21,31 @@ public class AppointmentService {
 
     private final AppointmentRepository apptRepo;
     private final AvailabilityService availabilityService;
+    private final DoctorRepository doctorRepo;
 
     public AppointmentService(AppointmentRepository apptRepo,
-                              AvailabilityService availabilityService) {
+                              AvailabilityService availabilityService,
+                              DoctorRepository doctorRepo) {
         this.apptRepo = apptRepo;
         this.availabilityService = availabilityService;
+        this.doctorRepo = doctorRepo;
     }
 
     /* ---------- helpers ---------- */
 
     public List<AppointmentResDto> getAll() {
-        return apptRepo.findAll()
-                .stream()
-                .map(AppointmentResDto::from)
-                .toList();
+        return apptRepo.findAll().stream().map(AppointmentResDto::from).toList();
     }
 
     public List<AppointmentResDto> getByPatient(Long patientId) {
         return apptRepo.findByPatientIdOrderByStartTimeAsc(patientId)
-                .stream()
-                .map(AppointmentResDto::from)
-                .toList();
+                .stream().map(AppointmentResDto::from).toList();
     }
 
-    public List<AppointmentResDto> getForDoctorOnDay(Long doctorId, LocalDate day) {
-        LocalDateTime startOfDay = day.atStartOfDay();
-        LocalDateTime endOfDay = startOfDay.plusDays(1);
-        return apptRepo.findForDoctorOnDay(doctorId, startOfDay, endOfDay)
-                .stream()
-                .map(AppointmentResDto::from)
-                .toList();
+    public List<AppointmentResDto> getByDoctor(Long doctorId) {
+        return apptRepo.findByDoctorIdAndStartTimeBetween(
+                doctorId, LocalDateTime.MIN, LocalDateTime.MAX
+        ).stream().map(AppointmentResDto::from).toList();
     }
 
     public boolean hasOverlap(Long doctorId, LocalDateTime start, LocalDateTime end) {
@@ -68,77 +63,76 @@ public class AppointmentService {
             throw new IllegalArgumentException("Overlapping appointment for doctor " + doctorId);
         }
 
-        Appointment entity = new Appointment();
-        entity.setPatientId(patientId);
-        entity.setDoctorId(doctorId);
-        entity.setStartTime(startTime);
-        entity.setEndTime(endTime);
-        entity.setType(type);
-        entity.setStatus(status);
-        entity.setNotes(notes);
-
-        return AppointmentResDto.from(apptRepo.save(entity));
+        var a = new Appointment();
+        a.setPatientId(patientId);
+        a.setDoctorId(doctorId);
+        a.setStartTime(startTime);
+        a.setEndTime(endTime);
+        a.setType(type);
+        a.setStatus(status);
+        a.setNotes(notes);
+        return AppointmentResDto.from(apptRepo.save(a));
     }
 
-    public AppointmentResDto updateTimes(Long appointmentId,
-                                         LocalDateTime startTime,
-                                         LocalDateTime endTime) {
-        Appointment entity = apptRepo.findById(appointmentId)
-                .orElseThrow(() -> new IllegalArgumentException("Appointment not found: " + appointmentId));
+    public AppointmentResDto updateTimes(Long id, LocalDateTime start, LocalDateTime end) {
+        if (start == null || end == null) throw new IllegalArgumentException("Start and end times are required");
+        if (!end.isAfter(start)) throw new IllegalArgumentException("End must be after start");
 
-        if (hasOverlap(entity.getDoctorId(), startTime, endTime)) {
-            throw new IllegalArgumentException("Overlapping appointment for doctor " + entity.getDoctorId());
+        var a = apptRepo.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Appointment not found"));
+
+        boolean unchanged = start.equals(a.getStartTime()) && end.equals(a.getEndTime());
+        if (!unchanged && hasOverlap(a.getDoctorId(), start, end)) {
+            throw new IllegalArgumentException("Overlapping appointment for doctor " + a.getDoctorId());
         }
 
-        entity.setStartTime(startTime);
-        entity.setEndTime(endTime);
-
-        return AppointmentResDto.from(apptRepo.save(entity));
+        a.setStartTime(start);
+        a.setEndTime(end);
+        return AppointmentResDto.from(apptRepo.save(a));
     }
 
-    /** For AvailabilityController */
-    public DaySlotsResponse getDoctorFreeSlots(Long doctorId, LocalDate day) {
-        return availabilityService.getFreeSlots(doctorId, day);
+    public AppointmentResDto updateTimesAsDoctor(Long apptId, LocalDateTime start, LocalDateTime end, String email) {
+        var doc = doctorRepo.findByUserEmailIgnoreCase(email)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Doctor not found"));
+        var appt = apptRepo.findById(apptId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Appointment not found"));
+
+        if (!appt.getDoctorId().equals(doc.getId()))
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Cannot modify another doctor's appointment");
+
+        return updateTimes(apptId, start, end);
     }
 
-    /* ---------- methods used by controllers ---------- */
+    public AppointmentResDto updateStatus(Long apptId, AppointmentStatus status) {
+        var a = apptRepo.findById(apptId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Appointment not found"));
+        a.setStatus(status.name());
+        return AppointmentResDto.from(apptRepo.save(a));
+    }
+
+    public AppointmentResDto updateStatusAsDoctor(Long apptId, AppointmentStatus status, String email) {
+        var doc = doctorRepo.findByUserEmailIgnoreCase(email)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Doctor not found"));
+        var a = apptRepo.findById(apptId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Appointment not found"));
+
+        if (!a.getDoctorId().equals(doc.getId()))
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Cannot change status of another doctor's appointment");
+
+        a.setStatus(status.name());
+        return AppointmentResDto.from(apptRepo.save(a));
+    }
 
     public List<AppointmentResDto> patientAppointments(long patientId) {
         return getByPatient(patientId);
     }
 
-    public DoctorDayResponse doctorDay(Long doctorId, LocalDate day) {
-        var list = getForDoctorOnDay(doctorId, day);
-        return new DoctorDayResponse(day, list);
-    }
-
-    public DoctorWeekResponse doctorWeek(Long doctorId, LocalDate weekStart) {
-        LocalDateTime start = weekStart.atStartOfDay();
-        LocalDateTime end = start.plusDays(7);
-        var list = apptRepo.findByDoctorIdAndStartTimeBetween(doctorId, start, end)
-                .stream()
-                .map(AppointmentResDto::from)
-                .toList();
-        return new DoctorWeekResponse(weekStart, weekStart.plusDays(6), list);
-    }
-
     public AppointmentResDto book(AppointmentCreateRequest req) {
         String status = (req.status() != null ? req.status().name() : AppointmentStatus.SCHEDULED.name());
-        return create(
-                req.patientId(),
-                req.doctorId(),
-                req.startTime(),
-                req.endTime(),
-                req.type(),
-                status,
-                req.notes()
-        );
+        return create(req.patientId(), req.doctorId(), req.startTime(), req.endTime(), req.type(), status, req.notes());
     }
 
-    public AppointmentResDto updateStatus(Long appointmentId, AppointmentStatus status) {
-        Appointment entity = apptRepo.findById(appointmentId)
-                .orElseThrow(() -> new IllegalArgumentException("Appointment not found: " + appointmentId));
-        entity.setStatus(status.name());
-        return AppointmentResDto.from(apptRepo.save(entity));
+    public Optional<AppointmentResDto> findById(Long id) {
+        return apptRepo.findById(id).map(AppointmentResDto::from);
     }
 }
