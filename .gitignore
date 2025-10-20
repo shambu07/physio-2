@@ -1,17 +1,16 @@
-﻿# Java / Spring Boot
-target/
-*.iml
+﻿target/
 .idea/
-*.log
+*.iml
 
-# Node / React
 frontend/node_modules/
 frontend/dist/
-frontend/.env
 
-# OS junk
+logs/
+*.log
+*.gz
+
+.env
+**/*.env
+
 .DS_Store
 Thumbs.db
-
-# Windows / OneDrive
-*.lnk
