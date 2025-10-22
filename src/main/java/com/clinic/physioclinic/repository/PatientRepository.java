@@ -10,6 +10,8 @@ public interface PatientRepository extends JpaRepository<Patient, Long> {
 
     // Find patient via linked user.email (case-insensitive)
     Optional<Patient> findByUserEmailIgnoreCase(String email);
+    // PatientRepository.java
+    Optional<Patient> findByUser_Id(Long userId);
 
     // Fallback lookup by plain stored email
     Optional<Patient> findByEmailIgnoreCase(String email);

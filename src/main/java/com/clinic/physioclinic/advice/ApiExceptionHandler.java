@@ -1,9 +1,12 @@
-package com.clinic.physioclinic.api;
+// src/main/java/com/clinic/physioclinic/api/ApiExceptionHandler.java
+package com.clinic.physioclinic.advice;
 
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.AuthenticationException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -15,6 +18,21 @@ import java.util.Map;
 @ControllerAdvice
 public class ApiExceptionHandler {
 
+    // --- SECURITY: 401 for unauthenticated ---
+    @ExceptionHandler(AuthenticationException.class)
+    public ResponseEntity<Map<String, Object>> handleAuth(AuthenticationException ex) {
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .body(Map.of("status", 401, "message", "Unauthorized"));
+    }
+
+    // --- SECURITY: 403 for forbidden (e.g., @PreAuthorize failure) ---
+    @ExceptionHandler(AccessDeniedException.class)
+    public ResponseEntity<Map<String, Object>> handleDenied(AccessDeniedException ex) {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                .body(Map.of("status", 403, "message", "Forbidden"));
+    }
+
+    // Keep original status for your own ResponseStatusExceptions
     @ExceptionHandler(ResponseStatusException.class)
     public ResponseEntity<Map<String, Object>> handleRse(ResponseStatusException ex) {
         return ResponseEntity.status(ex.getStatusCode())
@@ -38,6 +56,7 @@ public class ApiExceptionHandler {
                 .body(Map.of("status", 400, "message", ex.getMessage()));
     }
 
+    // LAST RESORT: only unexpected errors become 500
     @ExceptionHandler(Exception.class)
     public ResponseEntity<Map<String, Object>> handleOther(Exception ex) {
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)

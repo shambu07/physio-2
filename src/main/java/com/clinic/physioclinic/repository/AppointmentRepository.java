@@ -13,6 +13,9 @@ public interface AppointmentRepository extends JpaRepository<Appointment, Long> 
     // Patient "My Appointments"
     List<Appointment> findByPatientIdOrderByStartTimeAsc(Long patientId);
 
+    // ✅ Simple, safe finder for all appts by doctor (no MIN/MAX range issues)
+    List<Appointment> findByDoctorIdOrderByStartTimeAsc(Long doctorId);
+
     // Doctor day schedule (half-open [start, end) window)
     @Query("""
            SELECT a FROM Appointment a
@@ -37,12 +40,10 @@ public interface AppointmentRepository extends JpaRepository<Appointment, Long> 
                               @Param("start") LocalDateTime start,
                               @Param("end")   LocalDateTime end);
 
-    // Week query used by service
+    // Keep if you still use bounded queries elsewhere
     List<Appointment> findByDoctorIdAndStartTimeBetween(Long doctorId,
                                                         LocalDateTime start,
                                                         LocalDateTime end);
 
     boolean existsByDoctorIdAndStartTime(Long doctorId, LocalDateTime start);
-
-    // (Optional derived equivalents shown previously)
 }

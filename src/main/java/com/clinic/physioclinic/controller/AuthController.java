@@ -1,9 +1,7 @@
 // src/main/java/com/clinic/physioclinic/controller/AuthController.java
 package com.clinic.physioclinic.controller;
 
-import com.clinic.physioclinic.dto.AuthRequest;
-import com.clinic.physioclinic.dto.AuthResponse;
-import com.clinic.physioclinic.dto.RegisterRequest;
+import com.clinic.physioclinic.dto.*;
 import com.clinic.physioclinic.model.Doctor;
 import com.clinic.physioclinic.model.Patient;
 import com.clinic.physioclinic.model.Role;
@@ -13,15 +11,18 @@ import com.clinic.physioclinic.repository.PatientRepository;
 import com.clinic.physioclinic.repository.UserRepository;
 import com.clinic.physioclinic.security.JwtUtil;
 import jakarta.validation.Valid;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.HashSet;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/auth")
@@ -51,7 +52,7 @@ public class AuthController {
     @PostMapping("/register")
     public ResponseEntity<AuthResponse> register(@Valid @RequestBody RegisterRequest req) {
         if (users.existsByEmail(req.getEmail())) {
-            return ResponseEntity.badRequest().build();
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Email already registered");
         }
 
         User u = new User();
@@ -66,7 +67,6 @@ public class AuthController {
         if (req.getRole() == Role.PATIENT) {
             Patient p = new Patient();
             p.setUser(u);
-            // ✅ satisfy NOT NULL columns on patient
             p.setName(u.getFullName());
             p.setEmail(u.getEmail());
             p.setPhone(req.getPhone());
@@ -78,15 +78,17 @@ public class AuthController {
             doctors.save(d);
         }
 
-        var token = jwtUtil.generate(u.getEmail(), roles.stream().map(Enum::name).toList());
-        return ResponseEntity.ok(
-                new AuthResponse(
-                        token,
-                        u.getFullName(),
-                        u.getEmail(),
-                        roles.stream().map(Enum::name).collect(java.util.stream.Collectors.toSet())
-                )
-        );
+        var roleNames = roles.stream().map(Enum::name).toList();
+        String access  = jwtUtil.generateAccessToken(u.getEmail(), roleNames);
+        String refresh = jwtUtil.generateRefreshToken(u.getEmail());
+
+        return ResponseEntity.ok(new AuthResponse(
+                access,
+                refresh,
+                u.getFullName(),
+                u.getEmail(),
+                roles.stream().map(Enum::name).collect(Collectors.toSet())
+        ));
     }
 
     @PostMapping("/login")
@@ -96,14 +98,40 @@ public class AuthController {
         var email = auth.getName();
         var u = users.findByEmail(email).orElseThrow();
 
-        var token = jwtUtil.generate(u.getEmail(), u.getRoles().stream().map(Enum::name).toList());
-        return ResponseEntity.ok(
-                new AuthResponse(
-                        token,
-                        u.getFullName(),
-                        u.getEmail(),
-                        u.getRoles().stream().map(Enum::name).collect(java.util.stream.Collectors.toSet())
-                )
-        );
+        var roleNames = u.getRoles().stream().map(Enum::name).toList();
+        String access  = jwtUtil.generateAccessToken(u.getEmail(), roleNames);
+        String refresh = jwtUtil.generateRefreshToken(u.getEmail());
+
+        return ResponseEntity.ok(new AuthResponse(
+                access,
+                refresh,
+                u.getFullName(),
+                u.getEmail(),
+                u.getRoles().stream().map(Enum::name).collect(Collectors.toSet())
+        ));
+    }
+
+    @PostMapping("/refresh")
+    public ResponseEntity<AuthResponse> refresh(@Valid @RequestBody RefreshRequest req) {
+        String token = req.refreshToken();
+        if (!jwtUtil.isRefreshToken(token)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid refresh token");
+        }
+
+        String email = jwtUtil.getSubject(token);
+        var u = users.findByEmail(email).orElseThrow(() ->
+                new ResponseStatusException(HttpStatus.UNAUTHORIZED, "User not found"));
+
+        var roleNames = u.getRoles().stream().map(Enum::name).toList();
+        String newAccess  = jwtUtil.generateAccessToken(email, roleNames);
+        String newRefresh = jwtUtil.generateRefreshToken(email); // optional: rotate refresh each time
+
+        return ResponseEntity.ok(new AuthResponse(
+                newAccess,
+                newRefresh,
+                u.getFullName(),
+                u.getEmail(),
+                u.getRoles().stream().map(Enum::name).collect(Collectors.toSet())
+        ));
     }
 }
