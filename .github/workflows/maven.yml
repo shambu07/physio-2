@@ -22,3 +22,9 @@ jobs:
 
       - name: Build & test (H2 profile, no Flyway)
         run: mvn -B clean verify "-Dspring.profiles.active=test" "-Dflyway.enabled=false"
+
+      - name: Upload JAR artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: physio-clinic-jar
+          path: target/physio-clinic-0.0.1-SNAPSHOT.jar
