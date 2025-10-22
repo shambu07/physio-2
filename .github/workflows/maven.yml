@@ -1,5 +1,5 @@
-﻿name: Maven CI
-
+﻿# .github/workflows/maven.yml
+name: Maven CI
 on:
   push:
     branches: [ main ]
@@ -20,5 +20,5 @@ jobs:
           java-version: "21"
           cache: maven
 
-      - name: Build & test (H2 / profile=test)
-        run: mvn -B clean verify
+      - name: Build & test (H2 profile, no Flyway)
+        run: mvn -B clean verify "-Dspring.profiles.active=test" "-Dflyway.enabled=false"
